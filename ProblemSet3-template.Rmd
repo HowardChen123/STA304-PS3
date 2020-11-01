@@ -12,10 +12,10 @@ output:
 library(tidyverse)
 
 # Loading in the cleaned survey Data
-survey_data <- read_csv("C:/Users/Sammi-Jo/Desktop/PS3/outputs/survey_data.csv")
+survey_data <- read_csv("survey_data.csv")
 
 # Loading in the cleaned census Data
-census_data <- read_csv("C:/Users/Sammi-Jo/Desktop/PS3/outputs/census_data.csv")
+#census_data <- read_csv("census_data.csv")
 
 ```
 
@@ -27,27 +27,98 @@ census_data <- read_csv("C:/Users/Sammi-Jo/Desktop/PS3/outputs/census_data.csv")
 
 # Model
 
-Here we are interested in predicting the popular vote outcome of the 2020 American federal election (include citation). To do this we are employing a post-stratification technique. In the following sub-sections I will describe the model specifics and the post-stratification calculation.
-
+The goal of this project is to predict the popular vote outcome of the 2020 American federal election (include citation). To do this we are employing a post-stratification technique. In the following sub-sections I will describe the model specifics and the post-stratification calculation. We aim to build a model that can provides good prediction, has low bias and generalizes well. 
 
 ## Model Specifics
-I will (incorrectly) be using a linear regression model to model the proportion of voters who will vote for Donald Trump. This is a naive model. I will only be using age, which is recorded as a numeric variable, to model the probability of voting for Donald Trump. The simple linear regression model I am using is:
 
-$$ y = \beta_0+\beta_1  x_{age} + \epsilon$$
+I will be using the AdaBoost algorithm to model the proportion of voters who will vote for Donald Trump. I will first describe the settings of the algorithm in detail:
+- Input: the survey data (6479 observations, separated into training and testing datasets)
+- Set of classifiers $H$: 
+- Hyperparameters: number of iterations $T$, learning rate $alpha$ (AdaBoost optimizes loss function by gradient descent), we choose the depth of each weak learner as 1 (i.e decision stumps) for a faster run time. Note that $T$, and $alpha$ will be tuned through 5-fold cross validation. Cross validation is useful in this case as we have a limited number of training data.
+Adaboost train classifiers iteratively. I will also describve the key steps of Adaboost algorithm:
+- Start with a base classifier (decision stump) that classifies the data the best (base on the misclassification rate). We give different weights to the training samples, where the ones that were classified incorrectly gets larger weights.
+- Train a new decision stump that classifies the weighted data the best, and add the decision stump to the ensemble of classifiers with a calculated weight.
+- Repeat the process by for $T$ times (number of iterations).
+We will be using the package GLM in the R Studio (Greenwell et al., 2020) to build the model. 
+Adaboost is chosen because ensembles of weak learners improve bias and prediction power, it is also resilient to overfitting. This is important as we have a small training dataset comparing to the census data. 
 
-Where $y$ represents the proportion of voters who will vote for Donald Trump. Similarly, $\beta_0$ represents the intercept of the model, and is the probability of voting for Donald Trump at age 0. Additionally, $\beta_1$ represents the slope of the model. So, for everyone one unit increase in age, we expect a $\beta_1$ increase in the probability of voting for Donald Trump.
+```{r, echo=FALSE, warning=FALSE}
+set.seed(1005107457)
+survey_data <- survey_data %>%
+  filter(vote_2020 %in% c("Donald Trump", "Joe Biden"))
 
-```{r, include=FALSE}
+survey_data <- na.omit(survey_data)
 
-# Creating the Model
-model <- lm(vote_trump ~ age, 
-            data=survey_data)
+survey_data$rownumber = 1:nrow(survey_data)
+test_id = sample(survey_data$rownumber, nrow(survey_data)/4)
+train_df = survey_data[!survey_data$rownumber %in% test_id, ]
+test_df = survey_data[survey_data$rownumber %in% test_id, ]
+```
 
-# Model Results (to Report in Results section)
-# summary(model)
-# OR
-# broom::tidy(model)
+Our survey dataset contains 6479 observations and each of them contains characteristics of American. Data is splitted into a training set (75%) and a testing set (25%). Note that there are no missing values in the data. We desire a higher proportion of the training data since the larger the training set, the more likely it captures entire data distribution and hence, our model will have less bias.
 
+```{r}
+base_model <- glm(vote_trump ~ age+as.factor(state)+
+                  as.factor(education)+as.factor(household_income)+
+                   as.factor(race_ethnicity)+as.factor(hispanic)+as.factor(gender)+
+                   as.factor(employment), 
+                 family = binomial, data = train_df)
+```
+
+```{r, echo=FALSE, warning=FALSE, results='hide'}
+## AIC ##
+step(base_model,
+     direction = c("forward"), trace = 0, k = 2)
+step(base_model,
+     direction = c("backward"), trace = 0, k = 2)
+## BIC ##
+step(base_model,
+     direction = c("forward"), trace = 0, k = log(nrow(train_df)))
+step(base_model,
+     direction = c("backward"), trace = 0, k = log(nrow(train_df)))
+```
+```{r}
+forward_aic <- glm(formula = vote_trump ~ age + as.factor(state) + as.factor(education) + 
+    as.factor(household_income) + as.factor(race_ethnicity) + 
+    as.factor(hispanic) + as.factor(gender) + as.factor(employment), 
+    family = binomial, data = train_df)
+backward_aic <- glm(formula = vote_trump ~ age + as.factor(state) + as.factor(education) + as.factor(race_ethnicity) + as.factor(hispanic) + as.factor(gender) + as.factor(employment), family = binomial, data = train_df)
+backward_bic <- glm(formula = vote_trump ~ age + as.factor(race_ethnicity) + 
+    as.factor(gender), family = binomial, data = train_df)
+```
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+library(pROC)
+library(ROCR)
+calculate_roc <- function(model, data){
+  p <- predict(model, type = "response")
+  roc_logit <- roc(data$vote_trump ~ p)
+  ## The True Positive Rate ##
+  TPR <- roc_logit$sensitivities
+  ## The False Positive Rate ##
+  FPR <- 1 - roc_logit$specificities
+  plot(FPR, TPR, xlim = c(0,1), ylim = c(0,1), type = 'l', lty = 1, lwd = 2,col = 'red')
+  abline(a = 0, b = 1, lty = 2, col = 'blue')
+  text(0.7,0.4,label = paste("AUC = ", round(auc(roc_logit),2)))
+  print(paste("AUC: ",auc(roc_logit)))
+}
+```
+
+```{r, echo=FALSE, message=FALSE, results='hide', warning=FALSE}
+library(epiDisplay)
+lrtest(forward_aic, backward_aic)
+lrtest(backward_bic, backward_aic)
+```
+
+```{r}
+test_model <- glm(formula = vote_trump ~ age + as.factor(state) + as.factor(education) + 
+    as.factor(household_income) + as.factor(race_ethnicity) + 
+    as.factor(hispanic) + as.factor(gender) + as.factor(employment), 
+    family = binomial, data = test_df)
+```
+
+```{r}
+calculate_roc(test_model, test_df)
 ```
 
 ## Post-Stratification 
@@ -90,5 +161,5 @@ Here you discuss subsequent work to be done after this report. This can include 
 
 # References
 
-
+2. Brandon Greenwell, Bradley Boehmke, Jay Cunningham and GBM Developers (2020). gbm: Generalized Boosted Regression Models. R package version 2.1.8. https://github.com/gbm-developers/gbm
 
