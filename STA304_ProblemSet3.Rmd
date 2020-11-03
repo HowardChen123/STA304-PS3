@@ -1,0 +1,470 @@
+---
+title: "**Prediction on 2020 American Federal Election Using a GLM with Post-Stratification**"
+author: "Yu Hau Chen, Jiekai Yin, Kengyi Wang"
+date: "2020/11/02"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+
+# Loading the cleaned survey Data
+survey_data <- read_csv("survey_data.csv")
+
+# Loading the cleaned census Data
+# census_data <- read_csv("/Users/jiekaiyin/Downloads/census_data.csv")
+
+```
+
+```{r, message=FALSE, echo=FALSE, results='hide', warning=FALSE}
+survey_data$sex <- rep(NA, nrow(survey_data))
+survey_data <- survey_data%>%mutate(sex = case_when(gender == "Female"~"female",
+                                                    gender == "Male"~"male"))
+
+survey_data$statefip <- rep(NA, nrow(survey_data))
+survey_data <- survey_data%>%mutate(statefip = case_when(state == "WI"~"wisconsin",
+                                                    state == "VA"~"virginia",
+                                                    state == "TX"~"texas",
+                                                     state == "WA"~"washington",
+                                                    state == "MA"~"massachusetts",
+                                                    state == "CA"~"california",
+                                                    state == "NC"~"north carolina",
+                                                    state == "MD"~"maryland",
+                                                    state == "FL"~"florida",
+                                                    state == "WV"~"west virginia",
+                                                    state == "OH"~"ohio",
+                                                    state == "NY"~"new york",
+                                                     state == "KY"~"kentucky",
+                                                    state == "IN"~"indiana",
+                                                     state == "IA"~"iowa",
+                                                    state == "SC"~"south carolina",
+                                                    state == "MN"~"minnesota",
+                                                    state == "GA"~"georgia",
+                                                    state == "PA"~"pennsylvania",
+                                                    state == "NJ"~"new jersey",
+                                                    state == "AZ"~"arizona",
+                                                    state == "IL"~"illinois",
+                                                     state == "OR"~"oregon",
+                                                    state == "MI"~"michigan",
+                                                    state == "CT"~"connecticut",
+                                                     state == "MO"~"missouri",
+                                                    state == "CO"~"colorado",
+                                                    state == "DC"~"district of columbia",
+                                                    state == "NM"~"new mexico",
+                                                    state == "TN"~"tennessee",
+                                                    state == "OK"~"oklahoma",
+                                                    state == "HI"~"hawaii",
+                                                    state == "MT"~"montana",
+                                                     state == "NV"~"nevada",
+                                                    state == "VT"~"vermont",
+                                                     state == "UT"~"utah",
+                                                    state == "NE"~"nebraska",
+                                                    state == "NH"~"new hampshire",
+                                                    state == "ME"~"maine",
+                                                    state == "ID"~"idaho",
+                                                    state == "LA"~"louisiana",
+                                                     state == "MS"~"mississippi",
+                                                    state == "KS"~"kansas",
+                                                    state == "AL"~"alabama",
+                                                     state == "AR"~"arkansas",
+                                                    state == "SD"~"south dakota",
+                                                    state == "DE"~"delaware",
+                                                    state == "WY"~"wyoming",
+                                                    state == "ND"~"north dakota",
+                                                    state == "RI"~"rhode island",
+                                                     state == "AK"~"alaska"))
+
+```
+
+```{r, message=FALSE, echo=FALSE, results='hide', warning=FALSE}
+unique(survey_data$hispanic)
+#unique(census_data$hispan)
+
+survey_data$hispan <- rep(NA, nrow(survey_data))
+survey_data <- survey_data%>%mutate(hispan = case_when(hispanic == "Not Hispanic"~"not hispanic",
+                                                      hispanic == "Mexican"~"mexican",
+                                                      hispanic == "Other Hispanic"~"other",
+                                                      hispanic == "Venezuelan"~"other",
+                                                      hispanic == "Spanish"~"other",
+                                                      hispanic == "Colombian"~"other",
+                                                      hispanic == "Cuban"~"cuban",
+                                                      hispanic == "Argentinian"~"other",
+                                                      hispanic == "Nicaraguan"~"other",
+                                                      hispanic == "Salvadorean"~"other",
+                                                      hispanic == "Ecuadorian"~"other",
+                                                      hispanic == "Peruvian"~"other",
+                                                      hispanic == "Panamanian"~"other",
+                                                      hispanic == "Guatemalan"~"other",
+                                                       hispanic == "Puerto Rican"~"puerto rican"))
+                                                      
+                                                       
+```
+
+```{r, message=FALSE, echo=FALSE, results='hide', warning=FALSE}
+unique(survey_data$employment)
+#unique(census_data$labforce)
+survey_data$labforce <- rep(NA, nrow(survey_data))
+
+survey_data <- survey_data%>%mutate(labforce = case_when(employment == "Full-time employed"~"yes, in the labor force",employment == "Part-time employed"~"yes, in the labor force",employment == "Self-employed"~"yes, in the labor force",employment == "Unemployed or temporarily on layoff"~"yes, in the labor force",employment == "Unemployed or temporarily on layoff"~"yes, in the labor force",employment == "Retired"~"no, not in the labor force",employment == "Other"~"no, not in the labor force",employment == "Permanently disabled"~"no, not in the labor force",employment == "Student"~"no, not in the labor force"))       
+
+```
+
+```{r, message=FALSE, echo=FALSE, results='hide', warning=FALSE}
+# census_data$labforce[census_data$labforce == "n/a"] <- NA
+#unique(census_data$labforce)
+
+```
+
+```{r, message=FALSE, echo=FALSE, results='hide', warning=FALSE}
+# census_data$educd_2<- census_data$educd
+
+# census_data <- census_data%>%mutate(educd_2 = case_when(educd == "kindergarten"~"3rd Grade or less",
+#                                                         educd == "nursery school, preschool"~"3rd Grade or less",
+#                                                         educd == "grade 1"~"3rd Grade or less",
+#                                                         educd == "grade 2"~"3rd Grade or less",
+#                                                         educd == "no schooling completed"~"3rd Grade or less",
+#                                                         educd == "grade 4"~"Middle School - Grades 4 - 8",
+#                                                       educd == "grade 5"~"Middle School - Grades 4 - 8",
+#                                                       educd == "grade 6"~"Middle School - Grades 4 - 8",
+#                                                       educd == "grade 7"~"Middle School - Grades 4 - 8",
+#                                                       educd == "grade 8"~"Middle School - Grades 4 - 8",
+#                                                        educd == "grade 9"~"High school",
+#                                                       educd == "grade 10"~"High school",
+#                                                       educd == "grade 11"~"High school",
+#                                                       educd == "12th grade, no diploma"~"High school",
+#                                                       educd == "regular high school diploma"~"High school",
+#                                                       educd == "professional degree beyond a bachelor's degree"~"College",
+#                                                       educd == "some college, but less than 1 year"~"College",                   
+#                                                       educd == "ged or alternative credential"~"College",
+#                                                       educd == "1 or more years of college credit, no degree"~"College",                                    
+#                                                       educd == "bachelor's degree"~"College",
+#                                                       educd == "master's degree"~"Masters degree",
+#                                                       educd == "doctoral degree"~"Doctorate degree",
+#                                                       educd == "associate's degree, type not specified"~"Associate Degree"
+#                                                       
+#                                                       ))
+
+survey_data$educd_2 <- rep(NA, nrow(survey_data))
+survey_data <- survey_data%>%mutate(educd_2 = case_when(education == "3rd Grade or less"~"3rd Grade or less",
+                                                       education == "Middle School - Grades 4 - 8"~"Middle School - Grades 4 - 8", 
+                                                     education == "High school graduate"~"High school", 
+                                                     education == "Other post high school vocational training"~"High school",
+                                                     education == "Completed some high school"~"High school",
+                                                     education == "Completed some graduate, but no degree"~"High school",
+                                                     education == "Associate Degree"~"Associate Degree",
+                                                      education == "College Degree (such as B.A., B.S.)"~"College",
+                                                     education == "Completed some college, but no degree)"~"College",
+                                                     education == "Masters degree"~"Masters degree",
+                                                     education == "Doctorate degree"~"Doctorate degree",
+                                                     ))
+
+#census_data <- census_data %>% drop_na()
+```
+
+# Model
+
+The goal of this project is to predict the popular vote outcome of the 2020 American federal election with the Individual-level survey data (Tausanovitch et al., 2020) that records the favor of vote for different individuals and the American Community Surveys data (Steven et al., 2020) as our census data. To do this we are employing a post-stratification technique. In the following sub-sections I will describe the model specifics and the post-stratification calculation. We aim to build a model that can provides good prediction, has low bias and generalizes well. 
+
+## Model Specifics
+
+Logistic regression was chosen to fit the relationship between various American voters features and our target: the candidate that the person is going to vote during the election. For this study, we are only interested in the percentage of vote that Donald Trump will earn and the percentage of vote that Joe Biden will earn. We will develop one logistic regression model to predict the percentage of vote for Donald Trump, and another logistic regression model to predict the percentage of vote for Joe Biden. Logistic regression was chosen because the target variable is binary, and the logit link is appropriate for a target variable that follows a binomial distribution.
+
+For the base models, we will be using variables age, state, whether the voter is Hispanic, sex, whether or not the voter is in the labor force, and education. Hence the models we are using are:
+$$ logit(\pi_i) = \beta_0+\beta_1  x_{age} + \beta_2 x_{state} + \beta_3 x_{Hispanic} + \beta_4 x_{sex} + \beta_5 x_{labor\_force} + \beta_6 x_{education} + \epsilon$$.
+
+The final model is validated to ensure that our model has a good fit (likelihood ratio test), provides good predictions (ROC curve and AUC), and generalizes well (performs well on both the training test and the validation set).
+
+Note that The software we will be using for the model development is R.
+
+## Post-Stratification 
+
+Post-Stratification is the statistical technique that divide the sample into thousands demographic cells and estimate the cell-level outcomes based on the regression model trained on the survey responses. Then we construct the population-level estimate based on the cell weights. It is useful to reduce bias due to the adjustment of the sampling weight. In this analysis, we split cells based on the variables age, state, whether the voter is Hispanic, sex, whether or not the voter is in the labor force, and education. We believe that these variables can be significant to the person's favor of vote. For example, the votes of the people in swing states can be important for the final outcome. Additionally, these variables are both in the survey data and the census data. We did data modification in both dataset to match the variable names and their inputs. To estimate the proportion of voters in favor of voting for Donald Trump/Joe Biden, we will first estimate the proportion of voters in each combination of the variables. We will then weight each proportion estimate by the respective population size, sum those values, and finally divide by the entire population size to obtain . 
+
+# Results
+
+```{r, echo=FALSE}
+#calculate the probability of Joe Biden
+survey_data$vote_Biden <- rep(NA, nrow(survey_data))
+survey_data <- survey_data%>%mutate(vote_Biden = ifelse(vote_2020 == "Joe Biden", 1, 0))
+```
+
+```{r, echo=FALSE, warning=FALSE}
+set.seed(1005107457)
+
+survey_data <- na.omit(survey_data)
+
+survey_data$rownumber = 1:nrow(survey_data)
+test_id = sample(survey_data$rownumber, nrow(survey_data)/10)
+train_df = survey_data[!survey_data$rownumber %in% test_id, ]
+test_df = survey_data[survey_data$rownumber %in% test_id, ]
+```
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, results='hide'}
+base_model_trump <- glm(vote_trump ~ age+as.factor(statefip)+
+                +as.factor(hispan)+as.factor(sex) + as.factor(labforce) + as.factor(educd_2), 
+                 family = binomial, data = train_df)
+```
+
+```{r, echo=FALSE, warning=FALSE, results='hide'}
+## AIC ##
+step(base_model_trump,
+     direction = c("forward"), trace = 0, k = 2)
+step(base_model_trump,
+     direction = c("backward"), trace = 0, k = 2)
+## BIC ##
+step(base_model_trump,
+     direction = c("forward"), trace = 0, k = log(nrow(train_df)))
+step(base_model_trump,
+     direction = c("backward"), trace = 0, k = log(nrow(train_df)))
+```
+
+We begin with modeling whether the voter will vote for Donald Trump. Forward and backward AIC/BIC variable selections are performed to obtain candidate models, and we will fit the model on the test set, compare the performance of the candidate models, and select the best one. Note that we obtained the same model using forward AIC and forward BIC. Table 1 shows the comparison. We conclude that the forward stepwise AIC is the best model as it has a significantly better prediction power. Note that the forward stepwise AIC is the same model as the base model. 
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, results='hide'}
+forward_aic <- glm(formula = vote_trump ~ age + as.factor(statefip)+as.factor(hispan) + as.factor(sex) + as.factor(labforce) + as.factor(educd_2), family = binomial, data = test_df)
+
+backward_aic <- glm(formula = vote_trump ~ age + as.factor(hispan) + as.factor(sex) + 
+    as.factor(labforce) + as.factor(educd_2), family = binomial, 
+    data = test_df)
+
+backward_bic <- glm(formula = vote_trump ~ age + as.factor(sex) + as.factor(labforce), 
+    family = binomial, data = test_df)
+```
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+library(pROC)
+library(ROCR)
+calculate_roc <- function(model, data){
+  p <- predict(model, type = "response")
+  roc_logit <- roc(data$vote_trump ~ p)
+  ## The True Positive Rate ##
+  TPR <- roc_logit$sensitivities
+  ## The False Positive Rate ##
+  FPR <- 1 - roc_logit$specificities
+  # plot(FPR, TPR, xlim = c(0,1), ylim = c(0,1), type = 'l', lty = 1, lwd = 2,col = 'red')
+  # abline(a = 0, b = 1, lty = 2, col = 'blue')
+  # text(0.7,0.4,label = paste("AUC = ", round(auc(roc_logit),2)))
+  # print(paste("AUC: ",auc(roc_logit)))
+}
+```
+
+```{r, echo=FALSE, message=FALSE, results='hide', warning=FALSE}
+library(epiDisplay)
+lrtest(forward_aic, backward_aic)
+lrtest(backward_bic, backward_aic)
+```
+```{r, message=FALSE, echo=FALSE, warning=FALSE, results='hide'}
+calculate_roc(forward_aic, test_df)
+calculate_roc(backward_aic, test_df)
+calculate_roc(backward_bic, test_df)
+```
+
+```{r, echo=FALSE, warning=FALSE}
+library(pander)
+candidate_comparison <- data.frame("Candidate Model" = c("Forward Stepwise AIC", "Backward Stepwise AIC", "Backward Stepwise BIC"), "Number of Predictors" = c("6", "5", "3"), "Likelihood Ratio Test" = c("1", "0.6459564", "0.2242588"), "AUC" = c("0.75", "0.70", "0.67"))
+set.alignment('centre')
+pander(candidate_comparison, split.table=Inf, split.cells = c(2,1,30,45), style="multiline", caption = "Compare between Models for Donald Trump Vote")
+```
+
+Next, we will model whether the voter will vote for Joe Biden. Table 2 shows the comparison. We conclude that the forward stepwise AIC is the best model as it has a significantly better prediction power. Note that the forward stepwise AIC is the same model as the base model. 
+
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, results='hide'}
+base_model_joe <- glm(vote_Biden ~ age+as.factor(statefip)+
+                +as.factor(hispan)+as.factor(sex) + as.factor(labforce) + as.factor(educd_2), 
+                 family = binomial, data = train_df)
+```
+
+```{r, echo=FALSE, warning=FALSE, results='hide'}
+## AIC ##
+step(base_model_joe,
+     direction = c("forward"), trace = 0, k = 2)
+step(base_model_joe,
+     direction = c("backward"), trace = 0, k = 2)
+## BIC ##
+step(base_model_joe,
+     direction = c("forward"), trace = 0, k = log(nrow(train_df)))
+step(base_model_joe,
+     direction = c("backward"), trace = 0, k = log(nrow(train_df)))
+```
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, results='hide'}
+forward_aic <- glm(formula = vote_Biden ~ age + as.factor(statefip)+as.factor(hispan) + as.factor(sex) + as.factor(labforce) + as.factor(educd_2), family = binomial, data = test_df)
+
+backward_aic <- glm(formula = vote_Biden ~ age + as.factor(hispan) + as.factor(sex) + 
+    as.factor(labforce) + as.factor(educd_2), family = binomial, 
+    data = test_df)
+
+backward_bic <- glm(formula = vote_Biden ~ as.factor(sex), family = binomial, 
+    data = test_df)
+```
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, results='hide'}
+library(pROC)
+library(ROCR)
+calculate_roc <- function(model, data){
+  p <- predict(model, type = "response")
+  roc_logit <- roc(data$vote_Biden ~ p)
+  ## The True Positive Rate ##
+  TPR <- roc_logit$sensitivities
+  ## The False Positive Rate ##
+  FPR <- 1 - roc_logit$specificities
+  # plot(FPR, TPR, xlim = c(0,1), ylim = c(0,1), type = 'l', lty = 1, lwd = 2,col = 'red')
+  # abline(a = 0, b = 1, lty = 2, col = 'blue')
+  # text(0.7,0.4,label = paste("AUC = ", round(auc(roc_logit),2)))
+  # print(paste("AUC: ",auc(roc_logit)))
+}
+```
+
+```{r, echo=FALSE, message=FALSE, results='hide', warning=FALSE}
+library(epiDisplay)
+lrtest(forward_aic, backward_aic)
+lrtest(backward_bic, backward_aic)
+```
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, results='hide'}
+calculate_roc(forward_aic, test_df)
+calculate_roc(backward_aic, test_df)
+calculate_roc(backward_bic, test_df)
+```
+
+```{r, echo=FALSE, warning=FALSE}
+library(pander)
+candidate_comparison <- data.frame("Candidate Model" = c("Forward Stepwise AIC", "Backward Stepwise AIC", "Backward Stepwise BIC"), "Number of Predictors" = c("6", "5", "1"), "Likelihood Ratio Test" = c("1", "0.547113", "0.05279606"), "AUC" = c("0.71", "0.64", "0.57"))
+set.alignment('centre')
+pander(candidate_comparison, split.table=Inf, split.cells = c(2,1,30,45), style="multiline", caption = "Compare between Models for Joe Biden Vote")
+```
+
+Various model assumptions were checked. The observations were collected for independent respondents, hence the errors are pairwise independent. 
+The target variable is assumed to follow a distribution from an exponential family. Whether or not the vote for Donald Trump/Joe Biden is a binary variable, hence it follows a binomial distribution. Log odds of the target variable and the predictors are assumed to have a linear relationship. In the binned residual plot in Figure 1 and Figure 2, we see that there are only a few average residuals out of the $\pm2$ SE bands and the average residuals are scattered around the horizontal axis, indicating that the assumption is verified for both models. 
+
+```{r, echo=FALSE, message=FALSE}
+library(arm)
+binnedplot(fitted(base_model_trump), 
+           residuals(base_model_trump, type = "response"), 
+           nclass = NULL,
+           main = "Figure 1: Binned Residual plot for Modelling Donald Trump",
+           xlab = "Expected Fitted Values", 
+           ylab = "Average residual",
+           cex.pts = 0.8, 
+           col.pts = 1, 
+           col.int = "gray")
+```
+
+```{r, echo=FALSE}
+library(arm)
+binnedplot(fitted(base_model_joe), 
+           residuals(base_model_joe, type = "response"), 
+           nclass = NULL,
+           main = "Figure 2: Binned Residual plot for Modelling Joe Biden",
+           xlab = "Expected Fitted Values", 
+           ylab = "Average residual",
+           cex.pts = 0.8, 
+           col.pts = 1, 
+           col.int = "gray")
+```
+
+```{r, message=FALSE, echo=FALSE, results='hide', warning=FALSE}
+## Here I am only splitting cells by age, but you 
+## can use other variables to split by changing
+## count(age) to count(age, sex, ....)
+
+# census_data <- 
+#   census_data %>%
+#   count(age,sex, statefip, hispan, labforce, educd_2) %>%
+#   group_by(age,sex, statefip, hispan, labforce, educd_2) 
+# 
+# census_data <- 
+#   census_data %>% 
+#   filter(age != "less than 1 year old") %>%
+#   filter(age != "90 (90+ in 1980 and 1990)")
+# 
+# census_data$age <- as.integer(census_data$age)
+
+```
+
+```{r, message=FALSE, echo=FALSE, results='hide', warning=FALSE}
+model_mps <- glm(vote_trump ~ age+as.factor(statefip)+
+                +as.factor(hispan)+as.factor(sex) + as.factor(labforce) + as.factor(educd_2),
+                 family = binomial, data = survey_data)
+
+gc()
+
+library(readr)
+census_data <- read_csv("census_data_with_edu.csv", 
+     col_types = cols(labforce = col_character(), 
+         educd_2 = col_character()))
+
+census_data <- census_data %>% drop_na()
+```
+
+
+```{r, message=FALSE, echo=FALSE, results='hide', warning=FALSE}
+# Here I will perform the post-stratification calculation
+census_data$logodds_estimate <-
+  model_mps %>%
+  predict(newdata = census_data)
+
+census_data$estimate <-
+  exp(census_data$logodds_estimate)/(1+exp(census_data$logodds_estimate))
+
+census_data %>%
+  mutate(alp_predict_prop = estimate*n) %>%
+  summarise(alp_predict = sum(alp_predict_prop)/sum(n))
+
+#prob of trump
+sum(census_data$estimate*census_data$n)/sum(census_data$n)
+```
+
+```{r, message=FALSE, echo=FALSE, results='hide', warning=FALSE}
+model_mps_Biden <- glm(vote_Biden ~ age+as.factor(statefip)+
+                +as.factor(hispan)+as.factor(sex) + as.factor(labforce) + as.factor(educd_2),
+                 family = binomial, data = survey_data)
+
+# Here I will perform the post-stratification calculation
+census_data$logodds_estimate_2 <-
+  model_mps_Biden %>%
+  predict(newdata = census_data)
+
+census_data$estimate_2 <-
+  exp(census_data$logodds_estimate_2)/(1+exp(census_data$logodds_estimate_2))
+
+census_data %>%
+  mutate(alp_predict_prop_2 = estimate_2*n) %>%
+  summarise(alp_predict_2 = sum(alp_predict_prop_2)/sum(n))
+
+#prob of Biden
+sum(census_data$estimate_2*census_data$n)/sum(census_data$n)
+```
+
+We estimate that the proportion of voters in favor of voting for
+Donald Trump to be 38.41935% and the proportion of voters in favor of voting for Joe Biden to be 45.16735%, based on our post-stratification analysis. Note that our logistic regression accounts for age, state, whether the voter is Hispanic, sex, whether or not the voter is in the labor force, and education.
+
+# Discussion
+
+  Initially, the purpose was to predict who will win the primary vote. However, a simple random sample could not properly represent the balance of those observations in this extremely large data set. Post-stratification technique was employed in order to adjust the sampling weights, which sum to the population size within each stratum spitted from the original data set. Therefore, it was more convenient to indicate the estimated proportion of voters in favor of voting for each candidate through post-stratification method.
+
+  In conclusion, after structuring model specifics (based on cleaned survey data) and post-stratification calculation (based on cleaned census data), it was extrapolated that 38.41935%	of the entire population will vote Donald Trump, 45.16735% of that will vote Joe Biden, and the rest will not participate in this vote activity. Intuitively, based off the estimated percentage of voters, we predict that Joe Biden will win the election.
+
+## Weaknesses
+
+  Nonetheless, there are some weakness that need to be improved throughout the study. The result might not be representative and unbiased enough, because of those non-response observations that were mostly removed from the original data set in the process of post-stratification calculation. After removing those NA values, the post-stratification method might tend to an estimate with smaller variance. In addition, binomial logistics regression was involved in the model and theoretically, logistic regression is not the best model for prediction. Bagging or boosting techiniques can help to reduce variance and bias of the prediction.
+
+## Next Steps
+
+For our next step, we can improve our prediction through a more advanced algorithms such as bagging and boosting. As the election is approaching, we will also be examine if there is any improvements we can make for the individual survey collection process.
+
+
+# References
+1. Tausanovitch, Chris and Lynn Vavreck. 2020. Democracy Fund + UCLA Nationscape, October 10-17, 2019 (version 20200814). Retrieved from [https://www.voterstudygroup.org/publication/nationscape-data-set].
+
+2. Steven Ruggles, Sarah Flood, Ronald Goeken, Josiah Grover, Erin Meyer, Jose Pacas and Matthew Sobek. IPUMS USA: Version 10.0 [dataset]. Minneapolis, MN: IPUMS, 2020.
+https://doi.org/10.18128/D010.V10.0
+
+3. Stephanie. “Weighting Factor, Statistical Weight: Definition, Uses.” Statistics How To, 8 July 2020, www.statisticshowto.com/weighting-factor/. 
+
+
+
